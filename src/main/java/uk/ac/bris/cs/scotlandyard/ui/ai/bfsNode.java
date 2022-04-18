@@ -22,6 +22,15 @@ public class bfsNode {
 
     public Player updateExplorerTickets(ScotlandYard.Ticket ticket) { return this.explorer.use(ticket); }
 
+    public boolean exploreNode(int target) throws IllegalAccessError {
+        if (!isExplored) {
+            nodeExplored();
+            return this.node == target;
+        } else {
+            throw new IllegalAccessError("Node should not be explored again!");
+        }
+    }
+
     // Getter Methods
     public Player getExplorer() { return this.explorer; }
 
@@ -33,13 +42,4 @@ public class bfsNode {
 
     // Setter Method(s)
     private void nodeExplored() { this.isExplored = true; }
-
-    public boolean exploreNode(int target) throws IllegalAccessError {
-        if (!isExplored) {
-            nodeExplored();
-            return this.node == target;
-        } else {
-            throw new IllegalAccessError("Node should not be explored again!");
-        }
-    }
 }

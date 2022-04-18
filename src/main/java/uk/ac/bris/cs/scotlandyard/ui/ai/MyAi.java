@@ -57,13 +57,19 @@ public class MyAi implements Ai {
 		return Players;
 	}
 
+	/**
+	 * @param graph A ValueGraph with the nodes and the edge values between them.
+	 * @param detectives List of detectives
+	 * @param target MrX's Location
+	 * @param bfsDepth The number of moves to search for mrX from each detective
+	 * @return The shortest distance from a detective to MrX
+	 * */
 	public Integer BFS(ImmutableValueGraph<Integer, ImmutableSet<ScotlandYard.Transport>> graph,
 					   List<Player> detectives,
 					   int target,
 					   int bfsDepth) {
 
 		Queue<bfsNode> nodeTreeQueue = new LinkedList<>();
-		List<Integer> distancesToMrX = new ArrayList<>();
 		for (Player detective : detectives) {
 			nodeTreeQueue.add(new bfsNode(detective, detective.location(), List.of(), 0));
 		}
@@ -74,7 +80,13 @@ public class MyAi implements Ai {
 
 			// Mark bfsNode as explored and check if it contains mrX
 			if (currentNode.exploreNode(target)) {
-				distancesToMrX.add(currentNode.getDepth());
+				/*
+				 This is a Breadth-First-Search + We are utilizing queues.
+				 This allows us to return the depth without checking the rest of the queue,
+				 since its elements with greater depth are only processed after all the elements of the prior depth.
+				 The returned value x <= the rest of the elements in the queue.
+				*/
+				return currentNode.getDepth();
 			}
 
 			// Check that depth of current node is less than desired depth
@@ -100,39 +112,41 @@ public class MyAi implements Ai {
 			}
 		}
 
-		if (distancesToMrX.isEmpty()) {
+		return (bfsDepth + 1);
+/*		if (distancesToMrX.isEmpty()) {
 			return (bfsDepth + 1);
 		} else {
+			System.out.println(distancesToMrX);
 			return Collections.min(distancesToMrX); // return closest distance to MrX
-		}
+		}*/
 	}
 
+	/**
+	 * Evaluate the passed gameState using:<br>
+	 * 1) the Breadth-First-Search (BFS) algorithm to check the distances from detectives to MrX.<br>
+	 * 2) The empty nodes adjacent to MrX. <br>
+	 * @param gameState The gameState to be evaluated.
+	 * @return Returns an Integer representing the evaluation of the gameState.<br>
+	 */
 	public Integer evalState(myGameState gameState) {
-
+		int score = 0;
 		int mrXLocation = gameState.getMrX().location();
+		int distanceToMrX = BFS(gameState.getSetup().graph, gameState.getDetectives(), mrXLocation, 2);
 		List<Integer> detectivesLocations = gameState.getDetectives().stream().map(Player::location).toList();
-		ImmutableValueGraph<Integer, ImmutableSet<ScotlandYard.Transport>> graph = gameState.getSetup().graph;
 		List<Integer> adjacentNodes = new ArrayList<>(gameState.getSetup().graph.adjacentNodes(mrXLocation));
-		adjacentNodes.removeAll(detectivesLocations);
-		// Set<Integer> oneMoveNodes = this.Graph.adjacentNodes(mrXLocation);
+		//System.out.println("MRX: " + mrXLocation);
 
-		System.out.println("MRX: " + mrXLocation + " | DetsLocation: " + detectivesLocations);
-		// System.out.println(oneMoveNodes);
-
-		// if (detectivesLocations.contains(mrXLocation)){
-		// 	return -10000;
-		// }
-
-		int depth = 2;
-		int distanceToMrX = BFS(graph, gameState.getDetectives(), mrXLocation, depth);
-
-		int score = (-1000 + (distanceToMrX * 250));
-		score += adjacentNodes.size();
+		// Decrease score by 10 for every detective adjacent to MrX
+		for (Integer detLocations : detectivesLocations) {
+			if (adjacentNodes.contains(detLocations)) {
+				score -= 10;
+			}
+		}
+		adjacentNodes.removeAll(detectivesLocations); // Remove nodes occupied by detectives
+		score += adjacentNodes.size(); 				  // Add 1 to the score per empty node surrounding MrX
+		score += (-1000 + (distanceToMrX * 250)); 	  // Scoring the gameState based on the closest distance from MrX to a detective
 
 		return score;
-		// Board score increased based on available routes
-		//score += gameState.getSetup().graph.adjacentNodes(mrXLocation).size();
-
 		/*
 		// Score based on detectives close by
 		for (Integer node : oneMoveNodes) {
@@ -150,7 +164,6 @@ public class MyAi implements Ai {
 				score += 1;
 			}
 		}*/
-		//return score;
 	}
 
 	public Integer miniMax(myGameState gameState, Integer depth, boolean maximizeMrX, final List<Move> moves, List<Player> remainingDetectives) {
@@ -162,58 +175,86 @@ public class MyAi implements Ai {
 		// MrX moves
 		if (maximizeMrX) {
 			int maxEval = -1000000;
+			List<Move> movesList = moves; // Create a copy of the list of moves so that the original list is unaltered
 
 			// Remove Double Moves if no detective is at most {bfsDepth} moves away
 			int bfsDepth = 2;
 			Integer distanceToMrX = BFS(gameState.getSetup().graph, gameState.getDetectives(), gameState.getMrX().location(), bfsDepth);
-
-			List<Move> movesList = moves;
 			if (distanceToMrX >= bfsDepth + 1) {
 				movesList = movesList.parallelStream().filter(x -> !((List<ScotlandYard.Ticket>) x.tickets()).contains(ScotlandYard.Ticket.DOUBLE)).toList();
 			}
 			System.out.println(movesList);
 
+			/*
+			movesList.parallelStream().forEach(move -> {
+				myGameState childState = gameState.advance(move);
+				int eval = miniMax(childState, depth - 1, false, childState.getAvailableMoves().asList(), childState.getDetectives());
+				maxEval.set(max(maxEval.get(), eval));
+				this.moveEvalMap.put(move, eval);
+			});*/
+
 			for (Move move : movesList) {
 				myGameState childState = gameState.advance(move);
 				int eval = miniMax(childState, depth - 1, false, childState.getAvailableMoves().asList(), childState.getDetectives());
 				maxEval = max(maxEval, eval);
-				this.moveEvalMap.put(move, eval);
+				if (maxEval == eval) {
+					this.moveEvalMap.put(move, eval);
+				}
 			}
 			return maxEval;
 		}
 		// Detectives move
 		else {
 			AtomicInteger minEval = new AtomicInteger(1000000);
-			//moves.stream().forEach();
+
 			remainingDetectives.parallelStream().forEach(detective -> {
-				List<Move> detectiveMoves = moves.stream().filter(move -> move.commencedBy() == detective.piece()).toList();
-				for (Move move : detectiveMoves) {
+				List<Move> detectiveMoves = moves.stream()
+						.filter(move -> move.commencedBy() == detective.piece())
+						.toList();
+
+				/*detectiveMoves.parallelStream().forEach(move -> {
 					myGameState childState = gameState.advance(move);
+					int eval;
 					if (childState.getRemaining().contains(childState.getMrX().piece())) {
-						int eval = miniMax(childState, depth - 1, true, childState.getAvailableMoves().asList(), childState.getDetectives());
-						minEval.set(min(minEval.get(), eval));
+						eval = miniMax(childState, depth - 1, true, childState.getAvailableMoves().asList(), childState.getDetectives());
 					} else {
-						int eval = miniMax(childState, depth, false, childState.getAvailableMoves().asList(), childState.getDetectives());
-						minEval.set(min(minEval.get(), eval));
+						eval = miniMax(childState, depth, false, childState.getAvailableMoves().asList(), childState.getDetectives());
 					}
+					minEval.set(min(minEval.get(), eval));
+				});*/
+				int currentEval = 0;
+				for (Move move : detectiveMoves) {
+					if (currentEval <= -745) {
+						break;
+					}
+					myGameState childState = gameState.advance(move);
+					int eval;
+					if (childState.getRemaining().contains(childState.getMrX().piece())) {
+						eval = miniMax(childState, depth - 1, true, childState.getAvailableMoves().asList(), childState.getDetectives());
+					} else {
+						eval = miniMax(childState, depth, false, childState.getAvailableMoves().asList(), childState.getDetectives());
+					}
+					minEval.set(min(minEval.get(), eval));
+					currentEval = minEval.intValue();
 				}
 			});
-			//for (Player detective : remainingDetectives) {
 
-
-			//}
-
-			/*for (Move move : moves) {
+			/*
+			for (Move move : moves) {
 				myGameState childState = gameState.advance(move);
+				int eval;
 				if (childState.getRemaining().contains(childState.getMrX().piece())) {
-					int eval = miniMax(childState, depth - 1, true, childState.getAvailableMoves().asList());
-					minEval = min(minEval, eval);
+					eval = miniMax(childState, depth - 1, true, childState.getAvailableMoves().asList(), childState.getDetectives(), alpha, beta);
 				} else {
-					int eval = miniMax(childState, depth, false, childState.getAvailableMoves().asList());
-					minEval = min(minEval, eval);
+					eval = miniMax(childState, depth, false, childState.getAvailableMoves().asList(), childState.getDetectives(), alpha, beta);
 				}
-			}*/
-
+				minEval.set(min(minEval.get(), eval));
+				alpha = max(alpha, eval);
+				if (beta <= alpha) {
+					break;
+				}
+			}
+			*/
 			return minEval.get();
 		}
 	}
