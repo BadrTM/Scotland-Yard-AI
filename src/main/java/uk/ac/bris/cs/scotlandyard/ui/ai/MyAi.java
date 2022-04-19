@@ -59,34 +59,69 @@ public class MyAi implements Ai {
 
 	/**
 	 * @param graph A ValueGraph with the nodes and the edge values between them.
+	 * @param mrX MrX's Location
 	 * @param detectives List of detectives
-	 * @param target MrX's Location
-	 * @param bfsDepth The number of moves to search for mrX from each detective
+	 * @param bfsDepth The distance from MrX to check for a detective (Starting at mrX current location)_
 	 * @return The shortest distance from a detective to MrX
 	 * */
 	public Integer BFS(ImmutableValueGraph<Integer, ImmutableSet<ScotlandYard.Transport>> graph,
+					   Player mrX,
 					   List<Player> detectives,
-					   int target,
 					   int bfsDepth) {
 
 		Queue<bfsNode> nodeTreeQueue = new LinkedList<>();
-		for (Player detective : detectives) {
+		nodeTreeQueue.add(new bfsNode(mrX, mrX.location(), List.of(mrX.location()), 0));
+		List<Integer> detectivesLocations = detectives.stream().map(Player::location).toList();
+
+		/*for (Player detective : detectives) {
 			nodeTreeQueue.add(new bfsNode(detective, detective.location(), List.of(), 0));
-		}
+		}*/
 
 		while (!nodeTreeQueue.isEmpty()) {
 			// Pick a bfsNode form the queue
 			bfsNode currentNode = nodeTreeQueue.poll();
 
-			// Mark bfsNode as explored and check if it contains mrX
-			if (currentNode.exploreNode(target)) {
+			// If node it contains a detective
+			if (detectivesLocations.contains(currentNode.getNode())) {
 				/*
 				 This is a Breadth-First-Search + We are utilizing queues.
-				 This allows us to return the depth without checking the rest of the queue,
+				 This allows us to return the depth (distance) without checking the rest of the queue,
 				 since its elements with greater depth are only processed after all the elements of the prior depth.
-				 The returned value x <= the rest of the elements in the queue.
+				 The returned value is less than or equal to the rest of the elements in the queue.
 				*/
-				return currentNode.getDepth();
+
+				List<Integer> pathToMrX = new ArrayList<>(currentNode.getNodesTraversed());
+				//pathToMrX.remove(pathToMrX.get(pathToMrX.size() - 1));
+				Collections.reverse(pathToMrX);
+				Player closeDetective = detectives.stream().filter(detective -> detective.location() == currentNode.getNode()).toList().get(0);
+
+				if (closeDetective.location() == mrX.location()) {
+					return currentNode.getDepth();
+				}
+				ImmutableSet<ScotlandYard.Transport> transportsSet1 = graph.edgeValue(closeDetective.location(), pathToMrX.get(1)).orElse(ImmutableSet.of());
+
+				for (ScotlandYard.Transport edge1:  transportsSet1) {
+					// If detective has the required ticket for first move towards mrX
+					if (closeDetective.has(edge1.requiredTicket())) {
+						Player detDuplicate = closeDetective;
+						detDuplicate = detDuplicate.at(pathToMrX.get(1));
+						detDuplicate = detDuplicate.use(edge1.requiredTicket());
+						if (detDuplicate.location() == mrX.location()) {
+							return currentNode.getDepth();
+						} else {
+							ImmutableSet<ScotlandYard.Transport> transportsSet2 = graph.edgeValue(detDuplicate.location(), pathToMrX.get(2)).orElse(ImmutableSet.of());
+							for (ScotlandYard.Transport edge2 : transportsSet2) {
+								if (detDuplicate.has(edge2.requiredTicket())) {
+									detDuplicate = detDuplicate.at(pathToMrX.get(2));
+									detDuplicate = detDuplicate.use(edge2.requiredTicket());
+									if (detDuplicate.location() == mrX.location()) {
+										return currentNode.getDepth();
+									}
+								}
+							}
+						}
+					}
+				}
 			}
 
 			// Check that depth of current node is less than desired depth
@@ -96,8 +131,13 @@ public class MyAi implements Ai {
 				List<bfsNode> nextQueue = new ArrayList<>();
 
 				for (Integer adjNode : adjNodes) {
+					List<Integer> nodePath = new ArrayList<>(List.copyOf(currentNode.getNodesTraversed()));
+					nodePath.add(adjNode);
+					bfsNode node = new bfsNode(currentNode.getExplorer(), adjNode, nodePath,currentNode.getDepth() + 1);
+					nextQueue.add(node);
+
 					// Ticket(s) required to reach adjNode
-					ImmutableSet<ScotlandYard.Transport> transportsSet = graph.edgeValue(currentNode.getNode(), adjNode).orElse(ImmutableSet.of());
+					/*ImmutableSet<ScotlandYard.Transport> transportsSet = graph.edgeValue(currentNode.getNode(), adjNode).orElse(ImmutableSet.of());
 					for (ScotlandYard.Transport t:  transportsSet) {
 						// If detective has the required ticket to reach adjNode, add it to queue
 						if (currentNode.getExplorer().has(t.requiredTicket())) {
@@ -106,7 +146,7 @@ public class MyAi implements Ai {
 							bfsNode node = new bfsNode(currentNode.updateExplorerTickets(t.requiredTicket()), adjNode, nodePath,currentNode.getDepth() + 1);
 							nextQueue.add(node);
 						}
-					}
+					}*/
 				}
 				nodeTreeQueue.addAll(nextQueue);
 			}
@@ -123,22 +163,24 @@ public class MyAi implements Ai {
 
 	/**
 	 * Evaluate the passed gameState using:<br>
-	 * 1) the Breadth-First-Search (BFS) algorithm to check the distances from detectives to MrX.<br>
+	 * 1) the Breadth-First-Search (BFS) algorithm to check the proximity of detectives to MrX.<br>
 	 * 2) The empty nodes adjacent to MrX. <br>
 	 * @param gameState The gameState to be evaluated.
-	 * @return Returns an Integer representing the evaluation of the gameState.<br>
+	 * @return Returns an Integer representing the evaluation of the gameState.
 	 */
 	public Integer evalState(myGameState gameState) {
 		int score = 0;
 		int mrXLocation = gameState.getMrX().location();
-		int distanceToMrX = BFS(gameState.getSetup().graph, gameState.getDetectives(), mrXLocation, 2);
+		int distanceToMrX = BFS(gameState.getSetup().graph, gameState.getMrX(), gameState.getDetectives(), 1);
 		List<Integer> detectivesLocations = gameState.getDetectives().stream().map(Player::location).toList();
 		List<Integer> adjacentNodes = new ArrayList<>(gameState.getSetup().graph.adjacentNodes(mrXLocation));
 		//System.out.println("MRX: " + mrXLocation);
 
-		// Decrease score by 10 for every detective adjacent to MrX
-		for (Integer detLocations : detectivesLocations) {
-			if (adjacentNodes.contains(detLocations)) {
+		// Decrease score by 10 for every adjacent detective adjacent to MrX
+		// for cases when all moves are 1 move away from detectives but one
+		// move might only be close to 1 det instead of two
+		for (Integer detLocation : detectivesLocations) {
+			if (adjacentNodes.contains(detLocation)) {
 				score -= 10;
 			}
 		}
@@ -179,7 +221,8 @@ public class MyAi implements Ai {
 
 			// Remove Double Moves if no detective is at most {bfsDepth} moves away
 			int bfsDepth = 2;
-			Integer distanceToMrX = BFS(gameState.getSetup().graph, gameState.getDetectives(), gameState.getMrX().location(), bfsDepth);
+			Integer distanceToMrX = BFS(gameState.getSetup().graph, gameState.getMrX(), gameState.getDetectives(), bfsDepth);
+			System.out.println(distanceToMrX);
 			if (distanceToMrX >= bfsDepth + 1) {
 				movesList = movesList.parallelStream().filter(x -> !((List<ScotlandYard.Ticket>) x.tickets()).contains(ScotlandYard.Ticket.DOUBLE)).toList();
 			}
