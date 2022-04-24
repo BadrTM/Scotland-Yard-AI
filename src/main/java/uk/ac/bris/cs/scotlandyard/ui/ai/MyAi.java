@@ -240,6 +240,11 @@ public class MyAi implements Ai {
 				myGameState childState = gameState.advance(move);
 				int eval = miniMax(childState, depth - 1, false, childState.getAvailableMoves().asList(), childState.getDetectives());
 				maxEval = max(maxEval, eval);
+				// Subtracting one so that single ticket moves that result in the same destination are preferred
+				if (((List<ScotlandYard.Ticket>) move.tickets()).contains(ScotlandYard.Ticket.DOUBLE)) {
+					eval -= 1;
+				}
+				// We don't add moves with an evaluation that's less than any of the previous moves' evaluations.
 				if (maxEval == eval) {
 					this.moveEvalMap.put(move, eval);
 				}
@@ -255,16 +260,6 @@ public class MyAi implements Ai {
 						.filter(move -> move.commencedBy() == detective.piece())
 						.toList();
 
-				/*detectiveMoves.parallelStream().forEach(move -> {
-					myGameState childState = gameState.advance(move);
-					int eval;
-					if (childState.getRemaining().contains(childState.getMrX().piece())) {
-						eval = miniMax(childState, depth - 1, true, childState.getAvailableMoves().asList(), childState.getDetectives());
-					} else {
-						eval = miniMax(childState, depth, false, childState.getAvailableMoves().asList(), childState.getDetectives());
-					}
-					minEval.set(min(minEval.get(), eval));
-				});*/
 				int currentEval = 0;
 				for (Move move : detectiveMoves) {
 					if (currentEval <= -745) {
