@@ -10,14 +10,15 @@ import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
 
+@SuppressWarnings("UnstableApiUsage")
 public class myGameState implements Board.GameState {
-    private GameSetup setup;
+    private final GameSetup setup;
     private ImmutableSet<Piece> remaining;
-    private ImmutableList<LogEntry> log;
+    private final ImmutableList<LogEntry> log;
     private Player mrX;
-    private List<Player> detectives;
-    private List<Player> Players = new ArrayList<>();
-    private HashSet<Move> hashMoves = new HashSet<>();
+    private final List<Player> detectives;
+    private final List<Player> Players = new ArrayList<>();
+    private final HashSet<Move> hashMoves = new HashSet<>();
 
     public myGameState(final GameSetup setup,
                        final ImmutableSet<Piece> remaining,
@@ -70,7 +71,7 @@ public class myGameState implements Board.GameState {
 
         for (int destination : setup.graph.adjacentNodes(source)) {
             if (detectives.stream().noneMatch(x -> x.location() == destination)) {
-                for (ScotlandYard.Transport t: setup.graph.edgeValueOrDefault(source, destination, ImmutableSet.of())) {
+                for (ScotlandYard.Transport t: Objects.requireNonNull(setup.graph.edgeValueOrDefault(source, destination, ImmutableSet.of()))) {
                     if (player.has(t.requiredTicket())) {
                         moveSet.add(new Move.SingleMove(player.piece(), source, t.requiredTicket(), destination));
                     }
@@ -91,10 +92,10 @@ public class myGameState implements Board.GameState {
 
         for (int destination1 : setup.graph.adjacentNodes(source)) {
             if (detectives.stream().noneMatch(x -> x.location() == destination1)) {
-                for (ScotlandYard.Transport firstTicket : setup.graph.edgeValueOrDefault(source, destination1, ImmutableSet.of()) ) {
+                for (ScotlandYard.Transport firstTicket : Objects.requireNonNull(setup.graph.edgeValueOrDefault(source, destination1, ImmutableSet.of()))) {
                     for (int destination2 : setup.graph.adjacentNodes(destination1)) {
                         if (detectives.stream().noneMatch(x -> x.location() == destination2)) {
-                            for (ScotlandYard.Transport secondTicket : setup.graph.edgeValueOrDefault(destination1, destination2, ImmutableSet.of())) {
+                            for (ScotlandYard.Transport secondTicket : Objects.requireNonNull(setup.graph.edgeValueOrDefault(destination1, destination2, ImmutableSet.of()))) {
                                 // DoubleMove uses 2 tickets of the same type (No Secret Ticket)
                                 if ((firstTicket == secondTicket) && (MrX.hasAtLeast(firstTicket.requiredTicket(), 2))) {
                                     moveSet.add(new Move.DoubleMove(MrX.piece(), source, firstTicket.requiredTicket(), destination1, secondTicket.requiredTicket(), destination2));
@@ -125,9 +126,10 @@ public class myGameState implements Board.GameState {
     }
 
     private myGameState moveMrX(List<Integer> destinationList,
-                              List<ScotlandYard.Ticket> usedTickets,
-                              List<LogEntry> thisTurnLog,
-                              List<Integer> revealTurns) {
+                              List<ScotlandYard.Ticket> usedTickets) {
+        List<LogEntry> thisTurnLog = new ArrayList<>();
+        List<Integer> revealTurns = new ArrayList<>();
+
         for (int i = 0; i < this.setup.moves.size(); i++) {
             if (this.setup.moves.get(i)) { revealTurns.add(i + 1); }
         }
@@ -167,8 +169,9 @@ public class myGameState implements Board.GameState {
 
     private myGameState moveDetective(List<Integer> destinationList,
                                     Move move,
-                                    ImmutableSet<Move> moves,
-                                    List<Player> newDets) {
+                                    ImmutableSet<Move> moves) {
+        List<Player> newDets = new ArrayList<>();
+
         for (Player detective : this.detectives) {
             if (detective.piece() == move.commencedBy()) {
                 detective = detective.at(destinationList.get(0)); // Move detective
@@ -198,7 +201,13 @@ public class myGameState implements Board.GameState {
         }
     }
 
-    public ImmutableSet<Piece> getRemaining() { return this.remaining; }
+    public List<Player> getRemainingPlayers() {
+        if (this.remaining.contains(this.mrX.piece())) {
+            return List.of(this.mrX);
+        } else {
+            return List.copyOf(this.detectives.stream().filter(detective -> this.remaining.contains(detective.piece())).collect(Collectors.toSet()));
+        }
+    }
 
     public Player getMrX() {
         return this.mrX;
@@ -229,16 +238,12 @@ public class myGameState implements Board.GameState {
         // MrX moves
         if (move.commencedBy() == this.mrX.piece()) {
             List<ScotlandYard.Ticket> usedTickets = StreamSupport.stream(move.tickets().spliterator(), false).toList();
-            //this.mrX = this.mrX.use(usedTickets);
-            List<LogEntry> thisTurnLog = new ArrayList<>();
-            List<Integer> revealTurns = new ArrayList<>();
 
-            return moveMrX(destinationList, usedTickets, thisTurnLog, revealTurns);
+            return moveMrX(destinationList, usedTickets);
         }
         // A detective moves
         else {
-            List<Player> newDets = new ArrayList<>();
-            return moveDetective(destinationList, move, moves, newDets);
+            return moveDetective(destinationList, move, moves);
         }
     }
 
