@@ -71,7 +71,7 @@ public class myGameState implements Board.GameState {
 
         for (int destination : setup.graph.adjacentNodes(source)) {
             if (detectives.stream().noneMatch(x -> x.location() == destination)) {
-                for (ScotlandYard.Transport t: Objects.requireNonNull(setup.graph.edgeValueOrDefault(source, destination, ImmutableSet.of()))) {
+                for (ScotlandYard.Transport t : Objects.requireNonNull(setup.graph.edgeValueOrDefault(source, destination, ImmutableSet.of()))) {
                     if (player.has(t.requiredTicket())) {
                         moveSet.add(new Move.SingleMove(player.piece(), source, t.requiredTicket(), destination));
                     }
@@ -126,12 +126,14 @@ public class myGameState implements Board.GameState {
     }
 
     private myGameState moveMrX(List<Integer> destinationList,
-                              List<ScotlandYard.Ticket> usedTickets) {
+                                List<ScotlandYard.Ticket> usedTickets) {
         List<LogEntry> thisTurnLog = new ArrayList<>();
         List<Integer> revealTurns = new ArrayList<>();
 
         for (int i = 0; i < this.setup.moves.size(); i++) {
-            if (this.setup.moves.get(i)) { revealTurns.add(i + 1); }
+            if (this.setup.moves.get(i)) {
+                revealTurns.add(i + 1);
+            }
         }
 
         // If MrX used a Double Ticket (Add 2 log entries + move MrX to destination2)
@@ -168,8 +170,8 @@ public class myGameState implements Board.GameState {
     }
 
     private myGameState moveDetective(List<Integer> destinationList,
-                                    Move move,
-                                    ImmutableSet<Move> moves) {
+                                      Move move,
+                                      ImmutableSet<Move> moves) {
         List<Player> newDets = new ArrayList<>();
 
         for (Player detective : this.detectives) {
@@ -178,7 +180,9 @@ public class myGameState implements Board.GameState {
                 //detective.use(move.tickets()); // Subtract ticket
                 newDets.add(detective); // add to updated detectives list
                 this.mrX = this.mrX.give(move.tickets()); // Give used ticket to MrX
-            } else { newDets.add(detective); }
+            } else {
+                newDets.add(detective);
+            }
         }
 
         this.remaining = ImmutableSet.copyOf(moves.stream()
@@ -202,18 +206,18 @@ public class myGameState implements Board.GameState {
     }
 
     public List<Player> getRemainingPlayers() {
-        if (this.remaining.contains(this.mrX.piece())) {
-            return List.of(this.mrX);
-        } else {
-            return List.copyOf(this.detectives.stream().filter(detective -> this.remaining.contains(detective.piece())).collect(Collectors.toSet()));
-        }
+        return (this.remaining.contains(this.mrX.piece()))
+                ? List.of(this.mrX)
+                : List.copyOf(this.detectives.stream().filter(detective -> this.remaining.contains(detective.piece())).collect(Collectors.toSet()));
     }
 
     public Player getMrX() {
         return this.mrX;
     }
 
-    public List<Player> getDetectives() { return this.detectives; }
+    public List<Player> getDetectives() {
+        return this.detectives;
+    }
 
     @Nonnull
     @Override
@@ -231,14 +235,13 @@ public class myGameState implements Board.GameState {
             }
         });
 
-        if(!moves.contains(move)) {
-            throw new IllegalArgumentException("Illegal move: "+move);
+        if (!moves.contains(move)) {
+            throw new IllegalArgumentException("Illegal move: " + move);
         }
 
         // MrX moves
         if (move.commencedBy() == this.mrX.piece()) {
             List<ScotlandYard.Ticket> usedTickets = StreamSupport.stream(move.tickets().spliterator(), false).toList();
-
             return moveMrX(destinationList, usedTickets);
         }
         // A detective moves
@@ -263,12 +266,12 @@ public class myGameState implements Board.GameState {
 
     @Nonnull
     @Override
-    public Optional<Integer> getDetectiveLocation(Piece.Detective detective) {
+    public Optional<Integer> getDetectiveLocation(Piece.Detective detectivePiece) {
         // Get detective location by checking matching piece from detectives list, then
         // calling the .location() method and passing
         try {
             Integer detLocation = this.detectives.stream()
-                    .filter(x -> x.piece() == detective)
+                    .filter(detective -> detective.piece() == detectivePiece)
                     .toList()
                     .get(0)
                     .location();
@@ -281,9 +284,9 @@ public class myGameState implements Board.GameState {
     @Nonnull
     @Override
     public Optional<TicketBoard> getPlayerTickets(Piece piece) {
-        if (this.Players.stream().anyMatch(x -> x.piece() == piece)) {
+        if (this.Players.stream().anyMatch(player -> player.piece() == piece)) {
             TicketBoard playerTicket = ticket -> this.Players.stream()
-                    .filter(x -> x.piece() == piece)
+                    .filter(player -> player.piece() == piece)
                     .toList()
                     .get(0)
                     .tickets()
@@ -303,43 +306,46 @@ public class myGameState implements Board.GameState {
     @Nonnull
     @Override
     public ImmutableSet<Piece> getWinner() {
-        // Detective finds MrX, detectives win
-        if ((this.detectives.stream().anyMatch(x -> x.location() == this.mrX.location()))) {
-            return ImmutableSet.copyOf(this.detectives.stream().map(Player::piece).collect(Collectors.toSet()));
-        }
-        // All detective have no more moves
-        else if ((this.remaining.contains(this.mrX.piece())) && (this.detectives.stream().allMatch(x -> x.tickets().values().stream().allMatch(y -> y == 0)))) {
+        // All detective have no more moves or TravelLog is full, MrX wins
+        if ((this.remaining.contains(this.mrX.piece()))
+                && ((this.detectives.stream().allMatch(detective -> detective.tickets().values().stream().allMatch(ticketTypeAvailable -> ticketTypeAvailable == 0)))
+                || (this.log.size() == this.setup.moves.size()))) {
             return ImmutableSet.of(this.mrX.piece());
         }
-        // TravelLog is full
-        else if ((this.remaining.contains(this.mrX.piece())) && (this.log.size() == this.setup.moves.size())) {
-            return ImmutableSet.of(this.mrX.piece());
-        }
-        // MrX has no moves he can make, detectives win
-        else if ((this.remaining.contains(this.mrX.piece()) && (getAvailableMoves().isEmpty()))) {
+        // Detective finds MrX or MrX has no more moves, Detectives win
+        else if ((this.detectives.stream().anyMatch(detective -> detective.location() == this.mrX.location()))
+                || ((this.remaining.contains(this.mrX.piece()))
+                && (getAvailableMoves().isEmpty()))) {
             return ImmutableSet.copyOf(this.detectives.stream().map(Player::piece).collect(Collectors.toSet()));
         }
         // Still no winner
-        else { return ImmutableSet.of(); }
+        else {
+            return ImmutableSet.of();
+        }
     }
 
     @Nonnull
     @Override
     public ImmutableSet<Move> getAvailableMoves() {
-        if (this.detectives.stream().anyMatch(x -> x.location() == this.mrX.location())) {
+        // No available moves if detectives caught mrX
+        if (this.detectives.stream().anyMatch(detective -> detective.location() == this.mrX.location())
+                || this.detectives.stream().allMatch(detective -> detective.tickets().values().stream().allMatch(y -> y == 0))) {
             return ImmutableSet.of();
-        } else if (this.remaining.contains(this.mrX.piece())) {
-            if (this.detectives.stream().allMatch(x -> x.tickets().values().stream().allMatch(y -> y == 0)) || (getMrXTravelLog().size() == getSetup().moves.size())) {
+        }
+        // Get mrX's available moves
+        else if (this.remaining.contains(this.mrX.piece())) {
+            if (getMrXTravelLog().size() == getSetup().moves.size()) {
                 return ImmutableSet.of();
-            } else {
-                this.hashMoves.addAll(makeSingleMoves(this.setup, this.detectives, this.mrX, this.mrX.location()));
-                if ((this.mrX.has(ScotlandYard.Ticket.DOUBLE)) && (this.setup.moves.size() - this.log.size() >= 2)) {
-                    this.hashMoves.addAll(makeDoubleMoves(this.setup, this.detectives, this.mrX, this.mrX.location()));
-                }
             }
-        } else {
-            for (Player detective: this.detectives) {
-                if (this.remaining.stream().anyMatch(x -> x == detective.piece())) {
+            this.hashMoves.addAll(makeSingleMoves(this.setup, this.detectives, this.mrX, this.mrX.location()));
+            if ((this.mrX.has(ScotlandYard.Ticket.DOUBLE)) && (this.setup.moves.size() - this.log.size() >= 2)) {
+                this.hashMoves.addAll(makeDoubleMoves(this.setup, this.detectives, this.mrX, this.mrX.location()));
+            }
+        }
+        // Get detectives available moves
+        else {
+            for (Player detective : this.detectives) {
+                if (this.remaining.stream().anyMatch(remainingPLayer -> remainingPLayer == detective.piece())) {
                     this.hashMoves.addAll((makeSingleMoves(this.setup, this.detectives, detective, detective.location())));
                 }
             }
