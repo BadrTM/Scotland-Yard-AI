@@ -13,8 +13,6 @@ Welcome to the **Scotland Yard AI** repository, an implementation of a custom AI
   - [Prerequisites](#prerequisites)
   - [Running the AI](#running-the-ai)
 - [Technologies Used](#technologies-used)
-- [Contributions](#contributions)
-- [License](#license)
 
 ---
 
